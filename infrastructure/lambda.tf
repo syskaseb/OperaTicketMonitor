@@ -136,27 +136,56 @@ resource "aws_lambda_function" "opera_monitor" {
   ]
 }
 
-# CloudWatch Event Rule (scheduler)
-resource "aws_cloudwatch_event_rule" "schedule" {
-  name                = "opera-ticket-monitor-schedule"
-  description         = "Trigger Opera Ticket Monitor every hour"
-  schedule_expression = var.schedule_expression
+# EventBridge Scheduler (supports timezone)
+resource "aws_scheduler_schedule" "daily" {
+  name       = "opera-ticket-monitor-daily"
+  group_name = "default"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  schedule_expression          = "cron(0 14 * * ? *)"
+  schedule_expression_timezone = "Europe/Warsaw"
+
+  target {
+    arn      = aws_lambda_function.opera_monitor.arn
+    role_arn = aws_iam_role.scheduler_role.arn
+  }
 }
 
-# CloudWatch Event Target
-resource "aws_cloudwatch_event_target" "lambda_target" {
-  rule      = aws_cloudwatch_event_rule.schedule.name
-  target_id = "opera-ticket-monitor"
-  arn       = aws_lambda_function.opera_monitor.arn
+# IAM Role for EventBridge Scheduler
+resource "aws_iam_role" "scheduler_role" {
+  name = "opera-ticket-monitor-scheduler-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "scheduler.amazonaws.com"
+        }
+      }
+    ]
+  })
 }
 
-# Lambda permission for CloudWatch Events
-resource "aws_lambda_permission" "allow_cloudwatch" {
-  statement_id  = "AllowExecutionFromCloudWatch"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.opera_monitor.function_name
-  principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.schedule.arn
+resource "aws_iam_role_policy" "scheduler_policy" {
+  name = "opera-ticket-monitor-scheduler-policy"
+  role = aws_iam_role.scheduler_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "lambda:InvokeFunction"
+        Resource = aws_lambda_function.opera_monitor.arn
+      }
+    ]
+  })
 }
 
 # Invoke Lambda immediately after deployment
