@@ -31,7 +31,7 @@ variable "recipient_emails" {
 variable "schedule_expression" {
   description = "CloudWatch Events schedule expression"
   type        = string
-  default     = "rate(1 hour)"
+  default     = "cron(0 13 * * ? *)" # Daily at 14:00 CET (13:00 UTC)
 }
 
 variable "min_adjacent_seats" {
