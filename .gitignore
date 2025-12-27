@@ -33,3 +33,14 @@ build/
 
 # Local data
 data/
+
+# Terraform
+infrastructure/.terraform/
+infrastructure/*.tfstate*
+infrastructure/terraform.tfvars
+infrastructure/.terraform.lock.hcl
+infrastructure/layer.zip
+infrastructure/lambda_package.zip
+
+# Claude Code local settings
+.claude/
