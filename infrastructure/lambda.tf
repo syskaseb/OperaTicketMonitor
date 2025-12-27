@@ -158,3 +158,28 @@ resource "aws_lambda_permission" "allow_cloudwatch" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.schedule.arn
 }
+
+# Invoke Lambda immediately after deployment
+resource "null_resource" "invoke_lambda" {
+  triggers = {
+    lambda_arn   = aws_lambda_function.opera_monitor.arn
+    image_digest = null_resource.docker_build.id
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Invoking Lambda immediately after deployment..."
+      aws lambda invoke \
+        --function-name ${aws_lambda_function.opera_monitor.function_name} \
+        --invocation-type Event \
+        --region ${var.aws_region} \
+        /tmp/lambda_response.json
+      echo "Lambda invoked successfully"
+    EOT
+  }
+
+  depends_on = [
+    aws_lambda_function.opera_monitor,
+    aws_lambda_permission.allow_cloudwatch,
+  ]
+}
