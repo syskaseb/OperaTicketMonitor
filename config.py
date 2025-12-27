@@ -96,7 +96,7 @@ OPERA_HOUSES: list[OperaHouse] = [
         base_url="https://opera.bydgoszcz.pl",
         repertoire_url="https://opera.bydgoszcz.pl/repertuar.html",
         tickets_url_pattern="https://opera.bydgoszcz.pl/bilety.html",
-        enabled=False  # Disabled: page only shows day numbers without month, cannot determine actual dates
+        enabled=True  # Uses Playwright to visit show detail pages for accurate dates
     ),
     OperaHouse(
         name="Teatr Wielki",

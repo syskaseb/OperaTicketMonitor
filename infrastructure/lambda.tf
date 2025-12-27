@@ -68,77 +68,57 @@ resource "aws_ssm_parameter" "sender_password" {
   value       = var.sender_password
 }
 
-# Create deployment package
-data "archive_file" "lambda_zip" {
-  type        = "zip"
-  output_path = "${path.module}/lambda_package.zip"
+# ECR Repository for Lambda container image
+resource "aws_ecr_repository" "opera_monitor" {
+  name                 = "opera-ticket-monitor"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
 
-  source {
-    content  = file("${path.module}/../config.py")
-    filename = "config.py"
-  }
-  source {
-    content  = file("${path.module}/../models.py")
-    filename = "models.py"
-  }
-  source {
-    content  = file("${path.module}/../scrapers.py")
-    filename = "scrapers.py"
-  }
-  source {
-    content  = file("${path.module}/../notifier.py")
-    filename = "notifier.py"
-  }
-  source {
-    content  = file("${path.module}/../monitor.py")
-    filename = "monitor.py"
-  }
-  source {
-    content  = file("${path.module}/../lambda_handler.py")
-    filename = "lambda_handler.py"
+  image_scanning_configuration {
+    scan_on_push = false
   }
 }
 
-# Lambda Layer for dependencies
-resource "aws_lambda_layer_version" "dependencies" {
-  filename            = "${path.module}/layer.zip"
-  layer_name          = "opera-ticket-monitor-deps"
-  compatible_runtimes = ["python3.12"]
-  description         = "Dependencies for Opera Ticket Monitor"
-
-  depends_on = [null_resource.create_layer]
-}
-
-# Create layer with dependencies (minimal - no Playwright)
-resource "null_resource" "create_layer" {
+# Build and push container image
+resource "null_resource" "docker_build" {
   triggers = {
-    requirements_hash = filemd5("${path.module}/../requirements-lambda.txt")
+    dockerfile_hash = filemd5("${path.module}/../Dockerfile.lambda")
+    config_hash     = filemd5("${path.module}/../config.py")
+    scrapers_hash   = filemd5("${path.module}/../scrapers.py")
+    monitor_hash    = filemd5("${path.module}/../monitor.py")
+    notifier_hash   = filemd5("${path.module}/../notifier.py")
+    handler_hash    = filemd5("${path.module}/../lambda_handler.py")
   }
 
   provisioner "local-exec" {
     command = <<-EOT
-      cd ${path.module}
-      rm -rf python layer.zip
-      mkdir -p python
-      pip install -r ../requirements-lambda.txt -t python/ --platform manylinux2014_x86_64 --only-binary=:all: --python-version 3.12 2>/dev/null || pip install -r ../requirements-lambda.txt -t python/
-      zip -r layer.zip python
-      rm -rf python
+      cd ${path.module}/..
+
+      # Login to ECR
+      aws ecr get-login-password --region ${var.aws_region} | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com
+
+      # Build the image
+      docker build -f Dockerfile.lambda -t opera-ticket-monitor:latest .
+
+      # Tag for ECR
+      docker tag opera-ticket-monitor:latest ${aws_ecr_repository.opera_monitor.repository_url}:latest
+
+      # Push to ECR
+      docker push ${aws_ecr_repository.opera_monitor.repository_url}:latest
     EOT
   }
+
+  depends_on = [aws_ecr_repository.opera_monitor]
 }
 
-# Lambda function (without Playwright - scraping only)
+# Lambda function (container image with Playwright support)
 resource "aws_lambda_function" "opera_monitor" {
-  function_name    = "opera-ticket-monitor"
-  role             = aws_iam_role.lambda_role.arn
-  handler          = "lambda_handler.lambda_handler"
-  runtime          = "python3.12"
-  filename         = data.archive_file.lambda_zip.output_path
-  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
-  timeout          = 300
-  memory_size      = 512
-
-  layers = [aws_lambda_layer_version.dependencies.arn]
+  function_name = "opera-ticket-monitor"
+  role          = aws_iam_role.lambda_role.arn
+  package_type  = "Image"
+  image_uri     = "${aws_ecr_repository.opera_monitor.repository_url}:latest"
+  timeout       = 300
+  memory_size   = 1024 # Increased for Playwright/Chromium
 
   environment {
     variables = {
@@ -146,13 +126,13 @@ resource "aws_lambda_function" "opera_monitor" {
       SENDER_PASSWORD  = var.sender_password
       RECIPIENT_EMAILS = var.recipient_emails
       MIN_ADJACENT     = var.min_adjacent_seats
-      CHECK_SEATS      = "false" # Disable Playwright seat checking in Lambda
     }
   }
 
   depends_on = [
     aws_cloudwatch_log_group.lambda_logs,
     aws_iam_role_policy.lambda_policy,
+    null_resource.docker_build,
   ]
 }
 

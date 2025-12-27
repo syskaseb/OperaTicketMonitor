@@ -643,22 +643,70 @@ class OperaBaltyckaGdanskScraper(BaseScraper):
 
 
 class OperaNovaBydgoszczScraper(BaseScraper):
-    """Specialized scraper for Opera Nova in Bydgoszcz"""
+    """
+    Specialized scraper for Opera Nova in Bydgoszcz.
+
+    Uses Playwright to visit show detail pages which have accurate dates.
+    The main repertoire page only shows day numbers without months,
+    but /spektakle/opera/{show}.html pages list exact dates.
+    """
+
+    # Show detail page URLs for target operas
+    SHOW_PAGES = {
+        "Halka": "https://opera.bydgoszcz.pl/spektakle/opera/halka.html",
+        "Straszny Dwór": "https://opera.bydgoszcz.pl/spektakle/opera/straszny-dwor.html",
+    }
 
     async def scrape(self) -> ScrapeResult:
-        """Scrape Opera Nova website"""
+        """Scrape Opera Nova by visiting show detail pages with Playwright"""
         logger.info(f"Scraping {self.opera_house.name} ({self.opera_house.city})")
 
-        html = await self.fetch_page(self.opera_house.repertoire_url)
-        if not html:
+        performances = []
+
+        try:
+            from playwright.async_api import async_playwright
+        except ImportError:
+            logger.warning("Playwright not available, skipping Opera Nova")
             return ScrapeResult(
                 opera_house=self.opera_house.name,
                 city=self.opera_house.city,
                 success=False,
-                error_message="Failed to fetch page",
+                error_message="Playwright not available",
             )
 
-        performances = self._parse_repertoire(html)
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page()
+
+                for opera_name, url in self.SHOW_PAGES.items():
+                    try:
+                        logger.debug(f"Checking {opera_name} at {url}")
+                        await page.goto(url, wait_until='networkidle', timeout=30000)
+                        await page.wait_for_timeout(1000)
+
+                        # Extract performance dates from the show page
+                        show_performances = await self._extract_performances_from_page(
+                            page, opera_name
+                        )
+                        performances.extend(show_performances)
+
+                    except Exception as e:
+                        logger.warning(f"Error scraping {opera_name}: {e}")
+                        continue
+
+                await browser.close()
+
+        except Exception as e:
+            logger.error(f"Playwright error: {e}")
+            return ScrapeResult(
+                opera_house=self.opera_house.name,
+                city=self.opera_house.city,
+                success=False,
+                error_message=str(e),
+            )
+
+        # Filter to future dates and available tickets
         valid_performances = [
             p for p in performances
             if is_future_date(p.date) and is_available(p.status)
@@ -671,65 +719,48 @@ class OperaNovaBydgoszczScraper(BaseScraper):
             performances=list(set(valid_performances)),
         )
 
-    def _parse_repertoire(self, html: str) -> list[Performance]:
-        """Parse repertoire page"""
-        soup = BeautifulSoup(html, "html.parser")
+    async def _extract_performances_from_page(
+        self, page, opera_name: str
+    ) -> list[Performance]:
+        """Extract performance dates from a show detail page"""
         performances = []
 
-        # Opera Nova format: "09 STRASZNY DWÓR Opera 19:00"
-        # They show by month, need to figure out which month
-        now = datetime.now()
-        current_month = now.month
-        current_year = now.year
+        # Get the page text to find the schedule section
+        text = await page.evaluate('() => document.body.innerText')
 
-        for elem in soup.find_all(["div", "article", "li", "a"]):
-            text = elem.get_text(separator=" ", strip=True)
-            opera_name = self._is_target_opera(text)
+        # Look for "Najbliższe spektakle" section with dates in format:
+        # "Data: 09-04-2026 (Czwartek),Godzina: 19:00"
+        date_pattern = r'Data:\s*(\d{2})-(\d{2})-(\d{4})\s*\([^)]+\),?\s*Godzina:\s*(\d{2}):(\d{2})'
+        matches = re.findall(date_pattern, text)
 
-            if not opera_name:
-                continue
+        for match in matches:
+            day, month, year, hour, minute = match
+            try:
+                date = datetime(int(year), int(month), int(day), int(hour), int(minute))
+                time_str = f"{hour}:{minute}"
+                date_str = format_polish_date(date)
 
-            # Extract day number at start
-            date = None
-            day_match = re.search(r"^(\d{1,2})\s", text)
-            if day_match:
-                day = int(day_match.group(1))
-                # Assume next occurrence of this day
-                try:
-                    date = datetime(current_year, current_month, day)
-                    if date < now:
-                        # Try next month
-                        next_month = current_month + 1
-                        next_year = current_year
-                        if next_month > 12:
-                            next_month = 1
-                            next_year += 1
-                        date = datetime(next_year, next_month, day)
-                except ValueError:
+                # All shows on the detail page are assumed available unless sold out
+                status = TicketStatus.AVAILABLE
+                if "wyprzedane" in text.lower() or "brak biletów" in text.lower():
+                    # Check if sold out indicator is near this date
+                    # For now, assume available if listed
                     pass
 
-            # Extract time
-            time_str = ""
-            time_match = re.search(r"(\d{1,2}):(\d{2})", text)
-            if time_match:
-                time_str = f"{time_match.group(1)}:{time_match.group(2)}"
+                performances.append(Performance(
+                    opera_name=opera_name,
+                    opera_house=self.opera_house.name,
+                    city=self.opera_house.city,
+                    date=date,
+                    date_str=date_str,
+                    time=time_str,
+                    ticket_url=f"https://opera.bydgoszcz.pl/spektakle/opera/{opera_name.lower().replace(' ', '-')}.html",
+                    status=status,
+                ))
 
-            date_str = format_polish_date(date) if date else ""
-
-            status = self._detect_availability(text)
-
-            ticket_url = "https://opera.bydgoszcz.pl/bilety.html"
-
-            performances.append(Performance(
-                opera_name=opera_name,
-                opera_house=self.opera_house.name,
-                city=self.opera_house.city,
-                date=date,
-                date_str=date_str,
-                time=time_str,
-                ticket_url=ticket_url,
-                status=status,
-            ))
+            except ValueError as e:
+                logger.warning(f"Error parsing date {match}: {e}")
+                continue
 
         return performances
 

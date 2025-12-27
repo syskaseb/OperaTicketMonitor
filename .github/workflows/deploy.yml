@@ -16,12 +16,9 @@ env:
   TF_VAR_recipient_emails: ${{ secrets.RECIPIENT_EMAILS }}
 
 jobs:
-  terraform:
-    name: Terraform
+  deploy:
+    name: Build and Deploy
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: infrastructure
 
     steps:
       - name: Checkout
@@ -34,25 +31,33 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.5.0
 
       - name: Terraform Init
+        working-directory: infrastructure
         run: terraform init
 
       - name: Terraform Format Check
+        working-directory: infrastructure
         run: terraform fmt -check
         continue-on-error: true
 
       - name: Terraform Validate
+        working-directory: infrastructure
         run: terraform validate
 
       - name: Terraform Plan
+        working-directory: infrastructure
         run: terraform plan -no-color -input=false
         continue-on-error: false
 
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        working-directory: infrastructure
         run: terraform apply -auto-approve -input=false
