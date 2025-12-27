@@ -349,7 +349,7 @@ Link: {perf.ticket_url or 'Sprawdź stronę teatru'}
             return False
 
         try:
-            subject = f"🎭 BILETY DOSTĘPNE! {min_adjacent} miejsca obok siebie - Halka/Straszny Dwór"
+            subject = f"🎭 TICKETS AVAILABLE / BILETY DOSTĘPNE - Halka/Straszny Dwór"
 
             # Group by opera
             halka_results = [r for r in seat_results if "Halka" in r.performance.opera_name]
@@ -367,6 +367,10 @@ Link: {perf.ticket_url or 'Sprawdź stronę teatru'}
                 for r in straszny_results:
                     results_html += self._create_seat_result_html(r, min_adjacent)
 
+            count = len(seat_results)
+            perf_word_en = "performance" if count == 1 else "performances"
+            perf_word_pl = "spektakl" if count == 1 else "spektakli"
+
             html_body = f"""
             <!DOCTYPE html>
             <html>
@@ -376,19 +380,21 @@ Link: {perf.ticket_url or 'Sprawdź stronę teatru'}
             </head>
             <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f5f5f5;">
                 <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
-                    <h1 style="margin: 0; font-size: 28px;">🎭 BILETY ZNALEZIONE!</h1>
-                    <p style="margin: 12px 0 0 0; font-size: 18px; opacity: 0.95;">
-                        {min_adjacent} miejsca obok siebie dostępne!
-                    </p>
+                    <h1 style="margin: 0; font-size: 28px;">🎭 TICKETS FOUND!</h1>
+                    <p style="margin: 8px 0 0 0; font-size: 16px; opacity: 0.95;">BILETY ZNALEZIONE!</p>
                 </div>
 
                 <div style="background: white; padding: 24px; border: 1px solid #ddd; border-top: none; border-radius: 0 0 12px 12px;">
                     <div style="background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
                         <p style="margin: 0; color: #155724; font-weight: bold;">
-                            ✅ Znaleziono {len(seat_results)} {'spektakl' if len(seat_results) == 1 else 'spektakli'} z {min_adjacent}+ miejscami obok siebie!
+                            ✅ Found {count} {perf_word_en} with tickets available!
                         </p>
-                        <p style="margin: 8px 0 0 0; color: #155724; font-size: 14px;">
-                            Kup bilety jak najszybciej - mogą szybko zniknąć!
+                        <p style="margin: 4px 0 0 0; color: #155724; font-size: 13px;">
+                            Znaleziono {count} {perf_word_pl} z dostępnymi biletami!
+                        </p>
+                        <p style="margin: 12px 0 0 0; color: #155724; font-size: 14px;">
+                            🚀 Buy tickets ASAP - they may sell out fast!<br>
+                            <span style="font-size: 12px;">Kup bilety jak najszybciej - mogą szybko zniknąć!</span>
                         </p>
                     </div>
 
@@ -397,7 +403,7 @@ Link: {perf.ticket_url or 'Sprawdź stronę teatru'}
                     <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
 
                     <p style="color: #999; font-size: 12px; text-align: center;">
-                        Opera Ticket Monitor - automatyczne powiadomienie<br>
+                        Opera Ticket Monitor - automatic notification / automatyczne powiadomienie<br>
                         {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
                     </p>
                 </div>
@@ -405,20 +411,20 @@ Link: {perf.ticket_url or 'Sprawdź stronę teatru'}
             </html>
             """
 
-            # Plain text version
+            # Plain text version (bilingual)
             text_body = f"""
-🎭 OPERA TICKET MONITOR - BILETY ZNALEZIONE!
+🎭 OPERA TICKET MONITOR - TICKETS FOUND! / BILETY ZNALEZIONE!
 
-Znaleziono {len(seat_results)} spektakli z {min_adjacent}+ miejscami obok siebie!
+Found {count} {perf_word_en} with tickets available!
+Znaleziono {count} {perf_word_pl} z dostępnymi biletami!
 
 """
             for r in seat_results:
                 text_body += f"""
 {r.performance.opera_name}
 {r.performance.opera_house} ({r.performance.city})
-Data: {r.performance.date_str or 'Do potwierdzenia'} {r.performance.time}
-Miejsca: {', '.join(r.seat_details) if r.seat_details else 'Sprawdź na stronie'}
-Link: {r.ticket_url or 'Sprawdź stronę teatru'}
+Date/Data: {r.performance.date_str or 'TBD'} {r.performance.time}
+Link: {r.ticket_url or 'Check theater website / Sprawdź stronę teatru'}
 ---
 """
 
@@ -464,15 +470,15 @@ Link: {r.ticket_url or 'Sprawdź stronę teatru'}
     def _create_seat_result_html(self, result, min_adjacent: int) -> str:
         """Create HTML for a single seat check result"""
         perf = result.performance
-        date_display = perf.date_str or "Data do potwierdzenia"
+        date_display = perf.date_str or "TBD"
         time_display = perf.time or ""
 
         seats_info = ""
-        if result.seat_details:
+        if result.seat_details and result.seat_details[0] != "Seat check disabled":
             seats_info = f"""
             <p style="margin: 8px 0; color: #155724;">
                 💺 <strong>{', '.join(result.seat_details[:3])}</strong>
-                {f'<br><small>...i więcej</small>' if len(result.seat_details) > 3 else ''}
+                {f'<br><small>...and more / i więcej</small>' if len(result.seat_details) > 3 else ''}
             </p>
             """
 
@@ -480,13 +486,13 @@ Link: {r.ticket_url or 'Sprawdź stronę teatru'}
         if result.total_available_seats > 0:
             availability_info = f"""
             <span style="background: #28a745; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold;">
-                {result.total_available_seats} miejsc dostępnych
+                {result.total_available_seats} seats available / miejsc dostępnych
             </span>
             """
         elif result.adjacent_seats_count > 0:
             availability_info = f"""
             <span style="background: #28a745; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold;">
-                {result.adjacent_seats_count}+ par miejsc obok siebie
+                {result.adjacent_seats_count}+ adjacent pairs / par obok siebie
             </span>
             """
 
@@ -509,7 +515,7 @@ Link: {r.ticket_url or 'Sprawdź stronę teatru'}
                style="display: inline-block; background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
                       color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px;
                       margin-top: 12px; font-weight: bold; font-size: 16px;">
-                🎫 KUP BILETY TERAZ
+                🎫 BUY TICKETS / KUP BILETY
             </a>
         </div>
         """

@@ -40,9 +40,14 @@ def format_polish_date(dt: datetime) -> str:
 def is_future_date(dt: Optional[datetime]) -> bool:
     """Check if date is today or in the future"""
     if dt is None:
-        return True  # Include performances with unknown dates
+        return False  # Exclude performances with unknown dates
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     return dt >= today
+
+
+def is_available(status: TicketStatus) -> bool:
+    """Check if tickets are confirmed available (not sold out, not unknown)"""
+    return status == TicketStatus.AVAILABLE or status == TicketStatus.LIMITED
 
 
 class BaseScraper(ABC):
@@ -189,13 +194,16 @@ class GenericOperaScraper(BaseScraper):
 
         try:
             performances = self._parse_repertoire(html)
-            # Filter to only future dates
-            future_performances = [p for p in performances if is_future_date(p.date)]
+            # Filter to only future dates AND available tickets
+            valid_performances = [
+                p for p in performances
+                if is_future_date(p.date) and is_available(p.status)
+            ]
             return ScrapeResult(
                 opera_house=self.opera_house.name,
                 city=self.opera_house.city,
                 success=True,
-                performances=future_performances,
+                performances=valid_performances,
             )
         except Exception as e:
             logger.error(f"Error parsing {self.opera_house.name}: {e}")
@@ -372,9 +380,12 @@ class TeatrWielkiWarszawaScraper(BaseScraper):
             if html:
                 performances.extend(self._parse_kalendarium(html))
 
-        # Filter to future dates only and remove duplicates
-        future_performances = [p for p in performances if is_future_date(p.date)]
-        unique_performances = list(set(future_performances))
+        # Filter to future dates AND available tickets, remove duplicates
+        valid_performances = [
+            p for p in performances
+            if is_future_date(p.date) and is_available(p.status)
+        ]
+        unique_performances = list(set(valid_performances))
 
         return ScrapeResult(
             opera_house=self.opera_house.name,
@@ -458,13 +469,16 @@ class OperaWroclawScraper(BaseScraper):
             )
 
         performances = self._parse_repertoire(html)
-        future_performances = [p for p in performances if is_future_date(p.date)]
+        valid_performances = [
+            p for p in performances
+            if is_future_date(p.date) and is_available(p.status)
+        ]
 
         return ScrapeResult(
             opera_house=self.opera_house.name,
             city=self.opera_house.city,
             success=True,
-            performances=list(set(future_performances)),
+            performances=list(set(valid_performances)),
         )
 
     def _parse_repertoire(self, html: str) -> list[Performance]:
@@ -501,20 +515,25 @@ class OperaWroclawScraper(BaseScraper):
 
             date_str = format_polish_date(date) if date else ""
 
-            # Check availability
-            status = self._detect_availability(text)
-
-            # Find ticket URL
+            # Find ticket URL - must have active "Kup bilet" link to be available
             ticket_url = ""
+            has_buy_link = False
             for link in elem.find_all("a", href=True):
                 href = link["href"]
                 link_text = link.get_text(strip=True).lower()
-                if "kup" in link_text or "bilet" in link_text:
-                    ticket_url = urljoin(self.opera_house.base_url, href)
+                if "kup" in link_text and "bilet" in href.lower():
+                    ticket_url = href if href.startswith("http") else urljoin(self.opera_house.base_url, href)
+                    has_buy_link = True
                     break
 
-            if not ticket_url:
-                ticket_url = "https://bilety.opera.wroclaw.pl/"
+            # Determine availability: need active ticket link AND no sold out indicators
+            text_lower = text.lower()
+            if "wyprzedane" in text_lower or "brak biletów" in text_lower:
+                status = TicketStatus.SOLD_OUT
+            elif has_buy_link:
+                status = TicketStatus.AVAILABLE
+            else:
+                status = TicketStatus.UNKNOWN  # Will be filtered out
 
             performances.append(Performance(
                 opera_name=opera_name,
@@ -547,13 +566,16 @@ class OperaBaltyckaGdanskScraper(BaseScraper):
             )
 
         performances = self._parse_repertoire(html)
-        future_performances = [p for p in performances if is_future_date(p.date)]
+        valid_performances = [
+            p for p in performances
+            if is_future_date(p.date) and is_available(p.status)
+        ]
 
         return ScrapeResult(
             opera_house=self.opera_house.name,
             city=self.opera_house.city,
             success=True,
-            performances=list(set(future_performances)),
+            performances=list(set(valid_performances)),
         )
 
     def _parse_repertoire(self, html: str) -> list[Performance]:
@@ -633,13 +655,16 @@ class OperaNovaBydgoszczScraper(BaseScraper):
             )
 
         performances = self._parse_repertoire(html)
-        future_performances = [p for p in performances if is_future_date(p.date)]
+        valid_performances = [
+            p for p in performances
+            if is_future_date(p.date) and is_available(p.status)
+        ]
 
         return ScrapeResult(
             opera_house=self.opera_house.name,
             city=self.opera_house.city,
             success=True,
-            performances=list(set(future_performances)),
+            performances=list(set(valid_performances)),
         )
 
     def _parse_repertoire(self, html: str) -> list[Performance]:
