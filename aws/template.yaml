@@ -1,0 +1,109 @@
+# AWS SAM template for Opera Ticket Monitor
+# This is the RECOMMENDED way to deploy to AWS Lambda
+#
+# Prerequisites:
+#   pip install aws-sam-cli
+#
+# Deploy:
+#   cd aws
+#   sam build
+#   sam deploy --guided
+#
+# Or deploy with parameters:
+#   sam deploy --parameter-overrides SenderEmail=your@gmail.com SenderPassword=your-app-password
+
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Opera Ticket Monitor - Monitors Polish opera houses for Halka and Straszny Dwor tickets
+
+Globals:
+  Function:
+    Timeout: 300
+    MemorySize: 256
+    Runtime: python3.12
+
+Parameters:
+  SenderEmail:
+    Type: String
+    Description: Gmail address for sending notifications
+
+  SenderPassword:
+    Type: String
+    Description: Gmail App Password (NOT your regular password)
+    NoEcho: true
+
+  CheckIntervalMinutes:
+    Type: Number
+    Default: 15
+    Description: Check frequency in minutes
+    MinValue: 5
+    MaxValue: 60
+
+Resources:
+  # S3 bucket for state persistence between invocations
+  StateBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # Main Lambda function
+  OperaMonitorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: opera-ticket-monitor
+      CodeUri: ../
+      Handler: lambda_handler.lambda_handler
+      Description: Monitors Polish opera houses for ticket availability
+      Environment:
+        Variables:
+          SENDER_EMAIL: !Ref SenderEmail
+          SENDER_PASSWORD: !Ref SenderPassword
+          STATE_BUCKET: !Ref StateBucket
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref StateBucket
+      Events:
+        ScheduledCheck:
+          Type: Schedule
+          Properties:
+            Schedule: !Sub 'rate(${CheckIntervalMinutes} minutes)'
+            Description: Regular ticket check
+            Enabled: true
+
+  # CloudWatch alarm for errors
+  ErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: opera-monitor-errors
+      AlarmDescription: Alert when monitor has errors
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref OperaMonitorFunction
+      Statistic: Sum
+      Period: 3600  # 1 hour
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  FunctionArn:
+    Description: Lambda Function ARN
+    Value: !GetAtt OperaMonitorFunction.Arn
+
+  FunctionName:
+    Description: Lambda Function Name
+    Value: !Ref OperaMonitorFunction
+
+  StateBucket:
+    Description: S3 Bucket for state persistence
+    Value: !Ref StateBucket
+
+  MonitorSchedule:
+    Description: Check frequency
+    Value: !Sub 'Every ${CheckIntervalMinutes} minutes'

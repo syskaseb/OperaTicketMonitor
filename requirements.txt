@@ -1,0 +1,20 @@
+# Opera Ticket Monitor - Dependencies
+# Python 3.12+ required
+
+# HTTP client for async web scraping
+aiohttp>=3.9.0
+
+# Brotli compression (many Polish websites use it)
+Brotli>=1.1.0
+
+# HTML parsing
+beautifulsoup4>=4.12.0
+
+# Browser automation for seat map checking
+playwright>=1.40.0
+
+# For Lambda deployment (optional, only needed on AWS)
+boto3>=1.34.0
+
+# Type checking (dev)
+# mypy>=1.8.0

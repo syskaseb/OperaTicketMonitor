@@ -1,0 +1,129 @@
+# AWS CloudFormation template for Opera Ticket Monitor
+# Deploys as Lambda function with CloudWatch Events trigger
+#
+# Deploy with:
+# aws cloudformation deploy --template-file cloudformation.yml --stack-name opera-monitor --capabilities CAPABILITY_IAM
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Opera Ticket Monitor - Lambda deployment'
+
+Parameters:
+  SenderEmail:
+    Type: String
+    Description: Gmail address to send notifications from
+    NoEcho: false
+
+  SenderPassword:
+    Type: String
+    Description: Gmail App Password (not regular password!)
+    NoEcho: true
+
+  CheckIntervalMinutes:
+    Type: Number
+    Default: 15
+    Description: How often to check for tickets (in minutes)
+    MinValue: 5
+    MaxValue: 60
+
+Resources:
+  # S3 bucket for state persistence
+  StateBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'opera-monitor-state-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+
+  # Lambda execution role
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: opera-monitor-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub '${StateBucket.Arn}/*'
+
+  # Lambda function
+  MonitorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: opera-ticket-monitor
+      Runtime: python3.12
+      Handler: lambda_handler.lambda_handler
+      Role: !GetAtt LambdaRole.Arn
+      Timeout: 300  # 5 minutes should be enough
+      MemorySize: 256
+      Environment:
+        Variables:
+          SENDER_EMAIL: !Ref SenderEmail
+          SENDER_PASSWORD: !Ref SenderPassword
+          STATE_BUCKET: !Ref StateBucket
+      Code:
+        # You'll need to upload the code to S3 or use SAM/CDK for easier deployment
+        # For now, this is a placeholder - use `sam build && sam deploy` instead
+        ZipFile: |
+          def lambda_handler(event, context):
+              return {"statusCode": 200, "body": "Deploy actual code via SAM or upload to S3"}
+
+  # CloudWatch Events rule to trigger Lambda every 15 minutes
+  ScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: opera-monitor-schedule
+      Description: Trigger opera ticket monitor
+      ScheduleExpression: !Sub 'rate(${CheckIntervalMinutes} minutes)'
+      State: ENABLED
+      Targets:
+        - Id: MonitorFunction
+          Arn: !GetAtt MonitorFunction.Arn
+
+  # Permission for CloudWatch Events to invoke Lambda
+  SchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref MonitorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ScheduleRule.Arn
+
+  # CloudWatch Log Group with retention
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${MonitorFunction}'
+      RetentionInDays: 14
+
+Outputs:
+  FunctionArn:
+    Description: Lambda function ARN
+    Value: !GetAtt MonitorFunction.Arn
+
+  StateBucketName:
+    Description: S3 bucket for state
+    Value: !Ref StateBucket
+
+  LogGroupName:
+    Description: CloudWatch Log Group
+    Value: !Ref LogGroup
