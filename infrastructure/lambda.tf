@@ -142,11 +142,11 @@ resource "aws_lambda_function" "opera_monitor" {
 
   environment {
     variables = {
-      SENDER_EMAIL    = var.sender_email
-      SENDER_PASSWORD = var.sender_password
+      SENDER_EMAIL     = var.sender_email
+      SENDER_PASSWORD  = var.sender_password
       RECIPIENT_EMAILS = var.recipient_emails
-      MIN_ADJACENT    = var.min_adjacent_seats
-      CHECK_SEATS     = "false"  # Disable Playwright seat checking in Lambda
+      MIN_ADJACENT     = var.min_adjacent_seats
+      CHECK_SEATS      = "false" # Disable Playwright seat checking in Lambda
     }
   }
 
