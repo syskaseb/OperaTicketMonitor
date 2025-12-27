@@ -486,54 +486,58 @@ class OperaWroclawScraper(BaseScraper):
         soup = BeautifulSoup(html, "html.parser")
         performances = []
 
-        # Opera Wrocław has dates like "20260507" in the page
-        # Look for patterns with YYYYMMDD and opera names
-        for elem in soup.find_all(["div", "article", "li", "tr"]):
-            text = elem.get_text(separator=" ", strip=True)
-            opera_name = self._is_target_opera(text)
+        # Opera Wrocław structure:
+        # - Each performance is in a div.rep-single that contains BOTH the date (YYYYMMDD) AND the title
+        # - The h3.rep-list-title contains the opera name
+        # - The YYYYMMDD date must be in the SAME rep-single div as the h3
 
+        # Find all rep-single containers (each is one performance)
+        for rep_single in soup.find_all("div", class_="rep-single"):
+            text = rep_single.get_text(separator=" ", strip=True)
+
+            # Check if this contains a target opera
+            opera_name = self._is_target_opera(text)
             if not opera_name:
                 continue
 
-            # Extract date from format like "7 maja, Cz 19:00 20260507"
-            date = None
-            time_str = ""
-
-            # Look for YYYYMMDD format
+            # Must have YYYYMMDD date format in THIS specific container
             date_match = re.search(r"(\d{4})(\d{2})(\d{2})", text)
-            if date_match:
-                year, month, day = date_match.groups()
-                try:
-                    date = datetime(int(year), int(month), int(day))
-                except ValueError:
-                    pass
+            if not date_match:
+                continue  # Skip if no date in this container
+
+            year, month, day = date_match.groups()
+            try:
+                date = datetime(int(year), int(month), int(day))
+            except ValueError:
+                continue
 
             # Extract time
+            time_str = ""
             time_match = re.search(r"(\d{1,2}):(\d{2})", text)
             if time_match:
                 time_str = f"{time_match.group(1)}:{time_match.group(2)}"
 
-            date_str = format_polish_date(date) if date else ""
+            date_str = format_polish_date(date)
 
-            # Find ticket URL - must have active "Kup bilet" link to be available
+            # Find ticket URL - must have active "Kup bilet" link
             ticket_url = ""
             has_buy_link = False
-            for link in elem.find_all("a", href=True):
+            for link in rep_single.find_all("a", href=True):
                 href = link["href"]
                 link_text = link.get_text(strip=True).lower()
-                if "kup" in link_text and "bilet" in href.lower():
+                if "kup" in link_text and "bilet" in link_text:
                     ticket_url = href if href.startswith("http") else urljoin(self.opera_house.base_url, href)
                     has_buy_link = True
                     break
 
-            # Determine availability: need active ticket link AND no sold out indicators
+            # Determine availability - check for "brak miejsc" (no seats) in this specific container
             text_lower = text.lower()
-            if "wyprzedane" in text_lower or "brak biletów" in text_lower:
+            if "wyprzedane" in text_lower or "brak miejsc" in text_lower or "brak biletów" in text_lower:
                 status = TicketStatus.SOLD_OUT
             elif has_buy_link:
                 status = TicketStatus.AVAILABLE
             else:
-                status = TicketStatus.UNKNOWN  # Will be filtered out
+                status = TicketStatus.UNKNOWN
 
             performances.append(Performance(
                 opera_name=opera_name,
