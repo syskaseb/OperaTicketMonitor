@@ -158,7 +158,7 @@ Link: {perf.ticket_url or 'Sprawdź stronę teatru'}
             message = MIMEMultipart("alternative")
             message["Subject"] = subject
             message["From"] = self.config.sender_email
-            message["To"] = self.config.recipient_email
+            message["To"] = ", ".join(self.config.recipient_emails)
 
             # Attach both plain text and HTML versions
             message.attach(MIMEText(text_body, "plain", "utf-8"))
@@ -176,12 +176,12 @@ Link: {perf.ticket_url or 'Sprawdź stronę teatru'}
                 server.login(self.config.sender_email, self.config.sender_password)
                 server.sendmail(
                     self.config.sender_email,
-                    self.config.recipient_email,
+                    self.config.recipient_emails,
                     message.as_string(),
                 )
 
             logger.info(
-                f"Successfully sent notification email to {self.config.recipient_email}"
+                f"Successfully sent notification email to {', '.join(self.config.recipient_emails)}"
             )
             return True
 
@@ -248,7 +248,7 @@ Link: {perf.ticket_url or 'Sprawdź stronę teatru'}
             message = MIMEMultipart("alternative")
             message["Subject"] = subject
             message["From"] = self.config.sender_email
-            message["To"] = self.config.recipient_email
+            message["To"] = ", ".join(self.config.recipient_emails)
             message.attach(MIMEText(html_body, "html", "utf-8"))
 
             context = ssl.create_default_context()
@@ -262,7 +262,7 @@ Link: {perf.ticket_url or 'Sprawdź stronę teatru'}
                 server.login(self.config.sender_email, self.config.sender_password)
                 server.sendmail(
                     self.config.sender_email,
-                    self.config.recipient_email,
+                    self.config.recipient_emails,
                     message.as_string(),
                 )
 
@@ -305,7 +305,7 @@ Link: {perf.ticket_url or 'Sprawdź stronę teatru'}
             message = MIMEMultipart("alternative")
             message["Subject"] = subject
             message["From"] = self.config.sender_email
-            message["To"] = self.config.recipient_email
+            message["To"] = ", ".join(self.config.recipient_emails)
             message.attach(MIMEText(html_body, "html", "utf-8"))
 
             context = ssl.create_default_context()
@@ -319,7 +319,7 @@ Link: {perf.ticket_url or 'Sprawdź stronę teatru'}
                 server.login(self.config.sender_email, self.config.sender_password)
                 server.sendmail(
                     self.config.sender_email,
-                    self.config.recipient_email,
+                    self.config.recipient_emails,
                     message.as_string(),
                 )
 
@@ -425,7 +425,7 @@ Link: {r.ticket_url or 'Sprawdź stronę teatru'}
             message = MIMEMultipart("alternative")
             message["Subject"] = subject
             message["From"] = self.config.sender_email
-            message["To"] = self.config.recipient_email
+            message["To"] = ", ".join(self.config.recipient_emails)
 
             message.attach(MIMEText(text_body, "plain", "utf-8"))
             message.attach(MIMEText(html_body, "html", "utf-8"))
@@ -441,12 +441,12 @@ Link: {r.ticket_url or 'Sprawdź stronę teatru'}
                 server.login(self.config.sender_email, self.config.sender_password)
                 server.sendmail(
                     self.config.sender_email,
-                    self.config.recipient_email,
+                    self.config.recipient_emails,
                     message.as_string(),
                 )
 
             logger.info(
-                f"Successfully sent seat notification email to {self.config.recipient_email}"
+                f"Successfully sent seat notification email to {', '.join(self.config.recipient_emails)}"
             )
             return True
 

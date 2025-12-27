@@ -5,7 +5,7 @@ import asyncio
 import logging
 import re
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from urllib.parse import urljoin
 
@@ -16,6 +16,33 @@ from config import OperaHouse, MonitorConfig, TARGET_OPERAS, AVAILABILITY_KEYWOR
 from models import Performance, ScrapeResult, TicketStatus
 
 logger = logging.getLogger(__name__)
+
+# Polish month names for formatting
+POLISH_MONTHS = {
+    1: "stycznia", 2: "lutego", 3: "marca", 4: "kwietnia",
+    5: "maja", 6: "czerwca", 7: "lipca", 8: "sierpnia",
+    9: "września", 10: "października", 11: "listopada", 12: "grudnia"
+}
+
+POLISH_WEEKDAYS = {
+    0: "Poniedziałek", 1: "Wtorek", 2: "Środa", 3: "Czwartek",
+    4: "Piątek", 5: "Sobota", 6: "Niedziela"
+}
+
+
+def format_polish_date(dt: datetime) -> str:
+    """Format date in Polish style: 'Piątek 7 lutego 2026'"""
+    weekday = POLISH_WEEKDAYS[dt.weekday()]
+    month = POLISH_MONTHS[dt.month]
+    return f"{weekday} {dt.day} {month} {dt.year}"
+
+
+def is_future_date(dt: Optional[datetime]) -> bool:
+    """Check if date is today or in the future"""
+    if dt is None:
+        return True  # Include performances with unknown dates
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    return dt >= today
 
 
 class BaseScraper(ABC):
@@ -162,11 +189,13 @@ class GenericOperaScraper(BaseScraper):
 
         try:
             performances = self._parse_repertoire(html)
+            # Filter to only future dates
+            future_performances = [p for p in performances if is_future_date(p.date)]
             return ScrapeResult(
                 opera_house=self.opera_house.name,
                 city=self.opera_house.city,
                 success=True,
-                performances=performances,
+                performances=future_performances,
             )
         except Exception as e:
             logger.error(f"Error parsing {self.opera_house.name}: {e}")
@@ -314,121 +343,366 @@ class GenericOperaScraper(BaseScraper):
 class TeatrWielkiWarszawaScraper(BaseScraper):
     """
     Specialized scraper for Teatr Wielki - Opera Narodowa in Warsaw.
-    They have a more complex website structure.
+    Scrapes the kalendarium (calendar) pages for all upcoming months.
     """
 
     async def scrape(self) -> ScrapeResult:
-        """Scrape Teatr Wielki website"""
+        """Scrape Teatr Wielki website - all months from now to June next year"""
         logger.info(f"Scraping {self.opera_house.name} ({self.opera_house.city})")
 
         performances = []
 
-        # Try repertoire page
-        html = await self.fetch_page(self.opera_house.repertoire_url)
+        # Build list of month URLs to scrape (current month + next 6 months)
+        now = datetime.now()
+        month_urls = []
 
-        if html:
-            performances.extend(self._parse_page(html))
+        for i in range(7):  # Current month + 6 more months
+            target_date = now + timedelta(days=i * 30)
+            year = target_date.year
+            month = target_date.month
+            month_urls.append(
+                f"https://teatrwielki.pl/kalendarium/data/{year}/{month:02d}/"
+            )
 
-        # Also try the calendar/schedule pages
-        calendar_urls = [
-            "https://teatrwielki.pl/kalendarium/",
-            "https://teatrwielki.pl/spektakle/",
-        ]
+        # Also include current kalendarium page
+        month_urls.insert(0, "https://teatrwielki.pl/kalendarium/")
 
-        for url in calendar_urls:
+        for url in month_urls:
             html = await self.fetch_page(url)
             if html:
-                performances.extend(self._parse_page(html))
+                performances.extend(self._parse_kalendarium(html))
 
-        # Remove duplicates
-        unique_performances = list(set(performances))
+        # Filter to future dates only and remove duplicates
+        future_performances = [p for p in performances if is_future_date(p.date)]
+        unique_performances = list(set(future_performances))
 
-        if unique_performances or html:
-            return ScrapeResult(
+        return ScrapeResult(
+            opera_house=self.opera_house.name,
+            city=self.opera_house.city,
+            success=True,
+            performances=unique_performances,
+        )
+
+    def _parse_kalendarium(self, html: str) -> list[Performance]:
+        """Parse kalendarium page for target operas"""
+        soup = BeautifulSoup(html, "html.parser")
+        performances = []
+
+        # Find all event items
+        events = soup.select("li.data-event")
+
+        for event in events:
+            h3 = event.select_one("h3 a")
+            if not h3:
+                continue
+
+            title = h3.get_text(strip=True)
+            opera_name = self._is_target_opera(title)
+
+            if not opera_name:
+                continue
+
+            href = h3.get("href", "")
+
+            # Extract date from URL: /kalendarium/2025-2026/halka/termin/2025-12-07_18-00/
+            date = None
+            time_str = ""
+            date_match = re.search(r"(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})", href)
+            if date_match:
+                year, month, day, hour, minute = date_match.groups()
+                date = datetime(int(year), int(month), int(day), int(hour), int(minute))
+                time_str = f"{hour}:{minute}"
+
+            # Format date in Polish
+            date_str = format_polish_date(date) if date else ""
+
+            # Build ticket URL
+            ticket_url = urljoin("https://teatrwielki.pl", href) if href else "https://teatrwielki.pl/bilety/"
+
+            # Check availability
+            status = TicketStatus.UNKNOWN
+            text = event.get_text(separator=" ", strip=True).lower()
+            if "wyprzedane" in text or "sold out" in text:
+                status = TicketStatus.SOLD_OUT
+            elif "kup bilet" in text or "bilety" in text:
+                status = TicketStatus.AVAILABLE
+
+            performances.append(Performance(
+                opera_name=opera_name,
                 opera_house=self.opera_house.name,
                 city=self.opera_house.city,
-                success=True,
-                performances=unique_performances,
-            )
-        else:
+                date=date,
+                date_str=date_str,
+                time=time_str,
+                ticket_url=ticket_url,
+                status=status,
+            ))
+
+        return performances
+
+
+class OperaWroclawScraper(BaseScraper):
+    """Specialized scraper for Opera Wrocławska"""
+
+    async def scrape(self) -> ScrapeResult:
+        """Scrape Opera Wrocław website"""
+        logger.info(f"Scraping {self.opera_house.name} ({self.opera_house.city})")
+
+        html = await self.fetch_page(self.opera_house.repertoire_url)
+        if not html:
             return ScrapeResult(
                 opera_house=self.opera_house.name,
                 city=self.opera_house.city,
                 success=False,
-                error_message="Failed to fetch any pages",
+                error_message="Failed to fetch page",
             )
 
-    def _parse_page(self, html: str) -> list[Performance]:
-        """Parse a page for target operas"""
+        performances = self._parse_repertoire(html)
+        future_performances = [p for p in performances if is_future_date(p.date)]
+
+        return ScrapeResult(
+            opera_house=self.opera_house.name,
+            city=self.opera_house.city,
+            success=True,
+            performances=list(set(future_performances)),
+        )
+
+    def _parse_repertoire(self, html: str) -> list[Performance]:
+        """Parse repertoire page"""
         soup = BeautifulSoup(html, "html.parser")
         performances = []
 
-        # Teatr Wielki uses various selectors
-        selectors = [
-            ".schedule-item",
-            ".repertoire-item",
-            ".event",
-            ".performance",
-            "article",
-            ".calendar-item",
-            "[data-event]",
-        ]
+        # Opera Wrocław has dates like "20260507" in the page
+        # Look for patterns with YYYYMMDD and opera names
+        for elem in soup.find_all(["div", "article", "li", "tr"]):
+            text = elem.get_text(separator=" ", strip=True)
+            opera_name = self._is_target_opera(text)
 
-        for selector in selectors:
-            items = soup.select(selector)
-            for item in items:
-                text = item.get_text(separator=" ", strip=True)
-                opera_name = self._is_target_opera(text)
+            if not opera_name:
+                continue
 
-                if opera_name:
-                    performance = self._extract_performance(item, opera_name, text)
-                    if performance:
-                        performances.append(performance)
+            # Extract date from format like "7 maja, Cz 19:00 20260507"
+            date = None
+            time_str = ""
+
+            # Look for YYYYMMDD format
+            date_match = re.search(r"(\d{4})(\d{2})(\d{2})", text)
+            if date_match:
+                year, month, day = date_match.groups()
+                try:
+                    date = datetime(int(year), int(month), int(day))
+                except ValueError:
+                    pass
+
+            # Extract time
+            time_match = re.search(r"(\d{1,2}):(\d{2})", text)
+            if time_match:
+                time_str = f"{time_match.group(1)}:{time_match.group(2)}"
+
+            date_str = format_polish_date(date) if date else ""
+
+            # Check availability
+            status = self._detect_availability(text)
+
+            # Find ticket URL
+            ticket_url = ""
+            for link in elem.find_all("a", href=True):
+                href = link["href"]
+                link_text = link.get_text(strip=True).lower()
+                if "kup" in link_text or "bilet" in link_text:
+                    ticket_url = urljoin(self.opera_house.base_url, href)
+                    break
+
+            if not ticket_url:
+                ticket_url = "https://bilety.opera.wroclaw.pl/"
+
+            performances.append(Performance(
+                opera_name=opera_name,
+                opera_house=self.opera_house.name,
+                city=self.opera_house.city,
+                date=date,
+                date_str=date_str,
+                time=time_str,
+                ticket_url=ticket_url,
+                status=status,
+            ))
 
         return performances
 
-    def _extract_performance(
-        self, element, opera_name: str, text: str
-    ) -> Optional[Performance]:
-        """Extract performance details"""
-        # Extract date
-        date_str = ""
-        date = None
 
-        date_elem = element.select_one(".date, time, .event-date")
-        if date_elem:
-            date_str = date_elem.get_text(strip=True)
-            date = self._parse_polish_date(date_str)
+class OperaBaltyckaGdanskScraper(BaseScraper):
+    """Specialized scraper for Opera Bałtycka in Gdańsk"""
 
-        # Extract time
-        time_str = ""
-        time_match = re.search(r"(\d{1,2})[:.:](\d{2})", text)
-        if time_match:
-            time_str = f"{time_match.group(1)}:{time_match.group(2)}"
+    async def scrape(self) -> ScrapeResult:
+        """Scrape Opera Bałtycka website"""
+        logger.info(f"Scraping {self.opera_house.name} ({self.opera_house.city})")
 
-        # Find ticket URL
-        ticket_url = ""
-        for link in element.find_all("a", href=True):
-            href = link["href"]
-            if "bilet" in href.lower() or "ticket" in href.lower():
-                ticket_url = urljoin(self.opera_house.base_url, href)
-                break
+        html = await self.fetch_page(self.opera_house.repertoire_url)
+        if not html:
+            return ScrapeResult(
+                opera_house=self.opera_house.name,
+                city=self.opera_house.city,
+                success=False,
+                error_message="Failed to fetch page",
+            )
 
-        if not ticket_url:
-            ticket_url = "https://teatrwielki.pl/bilety/"
+        performances = self._parse_repertoire(html)
+        future_performances = [p for p in performances if is_future_date(p.date)]
 
-        status = self._detect_availability(text)
-
-        return Performance(
-            opera_name=opera_name,
+        return ScrapeResult(
             opera_house=self.opera_house.name,
             city=self.opera_house.city,
-            date=date,
-            date_str=date_str,
-            time=time_str,
-            ticket_url=ticket_url,
-            status=status,
+            success=True,
+            performances=list(set(future_performances)),
         )
+
+    def _parse_repertoire(self, html: str) -> list[Performance]:
+        """Parse repertoire page"""
+        soup = BeautifulSoup(html, "html.parser")
+        performances = []
+
+        # Opera Bałtycka format: "31 grudnia 2025 środa godz. 19:00 opera Straszny dwór"
+        polish_months_reverse = {
+            "stycznia": 1, "lutego": 2, "marca": 3, "kwietnia": 4,
+            "maja": 5, "czerwca": 6, "lipca": 7, "sierpnia": 8,
+            "września": 9, "października": 10, "listopada": 11, "grudnia": 12
+        }
+
+        for elem in soup.find_all(["div", "article", "li"]):
+            text = elem.get_text(separator=" ", strip=True)
+            opera_name = self._is_target_opera(text)
+
+            if not opera_name:
+                continue
+
+            # Extract date: "31 grudnia 2025"
+            date = None
+            date_match = re.search(r"(\d{1,2})\s+(stycznia|lutego|marca|kwietnia|maja|czerwca|lipca|sierpnia|września|października|listopada|grudnia)\s+(\d{4})", text.lower())
+            if date_match:
+                day = int(date_match.group(1))
+                month = polish_months_reverse.get(date_match.group(2), 1)
+                year = int(date_match.group(3))
+                try:
+                    date = datetime(year, month, day)
+                except ValueError:
+                    pass
+
+            # Extract time
+            time_str = ""
+            time_match = re.search(r"godz\.?\s*(\d{1,2}):(\d{2})", text)
+            if time_match:
+                time_str = f"{time_match.group(1)}:{time_match.group(2)}"
+
+            date_str = format_polish_date(date) if date else ""
+
+            # Check availability
+            status = self._detect_availability(text)
+            if "wyprzedane" in text.lower():
+                status = TicketStatus.SOLD_OUT
+
+            ticket_url = "https://operabaltycka.pl/bilety/"
+
+            performances.append(Performance(
+                opera_name=opera_name,
+                opera_house=self.opera_house.name,
+                city=self.opera_house.city,
+                date=date,
+                date_str=date_str,
+                time=time_str,
+                ticket_url=ticket_url,
+                status=status,
+            ))
+
+        return performances
+
+
+class OperaNovaBydgoszczScraper(BaseScraper):
+    """Specialized scraper for Opera Nova in Bydgoszcz"""
+
+    async def scrape(self) -> ScrapeResult:
+        """Scrape Opera Nova website"""
+        logger.info(f"Scraping {self.opera_house.name} ({self.opera_house.city})")
+
+        html = await self.fetch_page(self.opera_house.repertoire_url)
+        if not html:
+            return ScrapeResult(
+                opera_house=self.opera_house.name,
+                city=self.opera_house.city,
+                success=False,
+                error_message="Failed to fetch page",
+            )
+
+        performances = self._parse_repertoire(html)
+        future_performances = [p for p in performances if is_future_date(p.date)]
+
+        return ScrapeResult(
+            opera_house=self.opera_house.name,
+            city=self.opera_house.city,
+            success=True,
+            performances=list(set(future_performances)),
+        )
+
+    def _parse_repertoire(self, html: str) -> list[Performance]:
+        """Parse repertoire page"""
+        soup = BeautifulSoup(html, "html.parser")
+        performances = []
+
+        # Opera Nova format: "09 STRASZNY DWÓR Opera 19:00"
+        # They show by month, need to figure out which month
+        now = datetime.now()
+        current_month = now.month
+        current_year = now.year
+
+        for elem in soup.find_all(["div", "article", "li", "a"]):
+            text = elem.get_text(separator=" ", strip=True)
+            opera_name = self._is_target_opera(text)
+
+            if not opera_name:
+                continue
+
+            # Extract day number at start
+            date = None
+            day_match = re.search(r"^(\d{1,2})\s", text)
+            if day_match:
+                day = int(day_match.group(1))
+                # Assume next occurrence of this day
+                try:
+                    date = datetime(current_year, current_month, day)
+                    if date < now:
+                        # Try next month
+                        next_month = current_month + 1
+                        next_year = current_year
+                        if next_month > 12:
+                            next_month = 1
+                            next_year += 1
+                        date = datetime(next_year, next_month, day)
+                except ValueError:
+                    pass
+
+            # Extract time
+            time_str = ""
+            time_match = re.search(r"(\d{1,2}):(\d{2})", text)
+            if time_match:
+                time_str = f"{time_match.group(1)}:{time_match.group(2)}"
+
+            date_str = format_polish_date(date) if date else ""
+
+            status = self._detect_availability(text)
+
+            ticket_url = "https://opera.bydgoszcz.pl/bilety.html"
+
+            performances.append(Performance(
+                opera_name=opera_name,
+                opera_house=self.opera_house.name,
+                city=self.opera_house.city,
+                date=date,
+                date_str=date_str,
+                time=time_str,
+                ticket_url=ticket_url,
+                status=status,
+            ))
+
+        return performances
 
 
 def get_scraper(opera_house: OperaHouse, config: MonitorConfig) -> BaseScraper:
@@ -437,6 +711,9 @@ def get_scraper(opera_house: OperaHouse, config: MonitorConfig) -> BaseScraper:
     # Use specialized scrapers for specific theaters
     specialized_scrapers = {
         "Teatr Wielki - Opera Narodowa": TeatrWielkiWarszawaScraper,
+        "Opera Wrocławska": OperaWroclawScraper,
+        "Opera Bałtycka": OperaBaltyckaGdanskScraper,
+        "Opera Nova": OperaNovaBydgoszczScraper,
     }
 
     scraper_class = specialized_scrapers.get(opera_house.name, GenericOperaScraper)

@@ -41,6 +41,8 @@ infrastructure/terraform.tfvars
 infrastructure/.terraform.lock.hcl
 infrastructure/layer.zip
 infrastructure/lambda_package.zip
+infrastructure/tfplan
+infrastructure/python/
 
 # Claude Code local settings
 .claude/

@@ -13,7 +13,9 @@ class EmailConfig:
     smtp_port: int = 587
     sender_email: str = os.getenv("SENDER_EMAIL", "")
     sender_password: str = os.getenv("SENDER_PASSWORD", "")  # App password for Gmail
-    recipient_email: str = "syskaseb@gmail.com"
+    recipient_emails: list[str] = field(default_factory=lambda: [
+        e.strip() for e in os.getenv("RECIPIENT_EMAILS", "syska.seb@gmail.com,kingatoczko@gmail.com").split(",")
+    ])
 
 
 @dataclass

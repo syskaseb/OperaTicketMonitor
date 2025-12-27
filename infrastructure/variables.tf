@@ -22,10 +22,10 @@ variable "sender_password" {
   sensitive   = true
 }
 
-variable "recipient_email" {
-  description = "Email address to receive notifications"
+variable "recipient_emails" {
+  description = "Email addresses to receive notifications (comma-separated)"
   type        = string
-  default     = "syskaseb@gmail.com"
+  # No default - must be provided via TF_VAR_recipient_emails or tfvars
 }
 
 variable "schedule_expression" {

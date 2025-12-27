@@ -1,19 +1,21 @@
-# Opera Ticket Monitor 🎭
+# Opera Ticket Monitor
 
-Monitor dostępności biletów na **Halkę** i **Straszny Dwór** we wszystkich głównych operach w Polsce.
+Monitors Polish opera houses for ticket availability for **Halka** and **Straszny Dwór** operas, looking for 2+ adjacent seats.
 
-## Funkcje
+## Features
 
-- 🔍 Automatyczne przeszukiwanie 9 polskich oper co 15 minut
-- 📧 Powiadomienia email gdy bilety się pojawią
-- ☁️ Gotowy do deploymentu na AWS (Lambda lub ECS)
-- 💾 Pamięta o czym już powiadomił (bez spamu!)
+- Automatic scraping of 9 Polish opera houses every hour
+- Email notifications when tickets become available
+- Filters to show only future performances (next 6 months)
+- Polish date formatting (e.g., "Piątek 7 maja 2026")
+- Ready for AWS Lambda deployment
+- Remembers what it already notified about (no spam!)
 
-## Monitorowane teatry
+## Monitored Opera Houses
 
-| Opera | Miasto |
-|-------|--------|
-| Teatr Wielki - Opera Narodowa | Warszawa |
+| Opera House | City |
+|-------------|------|
+| Teatr Wielki - Opera Narodowa | Warsaw |
 | Opera Krakowska | Kraków |
 | Opera Wrocławska | Wrocław |
 | Opera Bałtycka | Gdańsk |
@@ -23,151 +25,150 @@ Monitor dostępności biletów na **Halkę** i **Straszny Dwór** we wszystkich 
 | Teatr Wielki im. Moniuszki | Poznań |
 | Opera i Filharmonia Podlaska | Białystok |
 
-## Szybki start (lokalnie)
+## Quick Start (Local)
 
-### 1. Instalacja
+### 1. Installation
 
 ```bash
-# Klonuj repo
-cd PythonProject
-
-# Stwórz venv (Python 3.12+)
+# Create venv (Python 3.12+)
 python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
-# lub .venv\Scripts\activate  # Windows
+# or .venv\Scripts\activate  # Windows
 
-# Zainstaluj zależności
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Konfiguracja email
+### 2. Email Configuration
 
-Aby otrzymywać powiadomienia, potrzebujesz:
+To receive notifications, you need:
 
-1. **Konto Gmail** do wysyłania emaili
-2. **App Password** (nie zwykłe hasło!) - [jak utworzyć](https://support.google.com/accounts/answer/185833)
+1. **Gmail account** for sending emails
+2. **App Password** (not regular password!) - [how to create](https://support.google.com/accounts/answer/185833)
 
 ```bash
-# Ustaw zmienne środowiskowe
-export SENDER_EMAIL="twoj-email@gmail.com"
+# Set environment variables
+export SENDER_EMAIL="your-email@gmail.com"
 export SENDER_PASSWORD="xxxx-xxxx-xxxx-xxxx"  # App Password!
+export RECIPIENT_EMAILS="recipient@gmail.com"
 ```
 
-### 3. Uruchomienie
+### 3. Run
 
 ```bash
-# Uruchom monitor (działa ciągle)
+# Run monitor (continuous)
 python monitor.py
 
-# Lub pojedyncze sprawdzenie (do testów)
+# Or single check (for testing)
 python -c "from monitor import OperaTicketMonitor; import asyncio; m = OperaTicketMonitor(); asyncio.run(m.run_once())"
 ```
 
-## Deploy na AWS
+## AWS Lambda Deployment
 
-### Opcja 1: AWS Lambda (zalecane) 💰
-
-Najtańsza opcja - płacisz tylko za wykonania (~$0.50/miesiąc).
+### Using Terraform (Recommended)
 
 ```bash
-# Zainstaluj SAM CLI
-pip install aws-sam-cli
+cd infrastructure
 
-# Deploy
-cd aws
-sam build
-sam deploy --guided
+# Configure variables in terraform.tfvars
+# - sender_email
+# - sender_password
+# - recipient_emails
+# - schedule_expression (default: "rate(1 hour)")
+
+terraform init
+terraform plan
+terraform apply
 ```
 
-Podczas guided deploy podaj:
-- `SenderEmail` - twój Gmail
-- `SenderPassword` - App Password
-
-### Opcja 2: Docker (ECS/Fargate)
+### Manual Test
 
 ```bash
-# Build
-docker build -t opera-monitor .
-
-# Run lokalnie
-docker run -e SENDER_EMAIL=xxx -e SENDER_PASSWORD=xxx opera-monitor
-
-# Push do ECR i deploy na ECS/Fargate
+# Invoke Lambda manually
+aws lambda invoke --function-name opera-ticket-monitor --payload '{}' response.json
+cat response.json
 ```
 
-### Opcja 3: EC2
+## Configuration
 
-```bash
-# Na EC2 (Amazon Linux 2023)
-sudo yum install python3.12
-pip install -r requirements.txt
+### Schedule
 
-# Uruchom w tle z nohup lub systemd
-nohup python monitor.py &
+The monitor runs **every 1 hour** by default. To change, edit `infrastructure/terraform.tfvars`:
+
+```hcl
+schedule_expression = "rate(1 hour)"    # Every hour
+schedule_expression = "rate(30 minutes)" # Every 30 minutes
+schedule_expression = "rate(2 hours)"   # Every 2 hours
 ```
 
-## Konfiguracja
+### Recipients
 
-Edytuj `config.py` aby zmienić:
+Edit `infrastructure/terraform.tfvars`:
 
-- **Częstotliwość sprawdzania** - domyślnie 15 minut
-- **Email odbiorcy** - domyślnie syskaseb@gmail.com
-- **Włącz/wyłącz konkretne opery**
-- **Dodaj więcej oper do szukania**
+```hcl
+recipient_emails = "email1@gmail.com,email2@gmail.com"
+```
+
+### Target Operas
+
+Edit `config.py` to add more operas to search for:
 
 ```python
-# config.py
-@dataclass
-class MonitorConfig:
-    check_interval_minutes: int = 15  # zmień tutaj
+TARGET_OPERAS: list[str] = [
+    "Straszny Dwór",
+    "Halka",
+    # Add more here
+]
 ```
 
-## Struktura projektu
+## Project Structure
 
 ```
 .
-├── config.py          # Konfiguracja (opery, email, interwały)
-├── models.py          # Modele danych
-├── scrapers.py        # Web scrapery dla każdej opery
-├── notifier.py        # System powiadomień email
-├── monitor.py         # Główna pętla monitora
-├── lambda_handler.py  # Handler AWS Lambda
-├── requirements.txt   # Zależności Python
-├── Dockerfile         # Do deploymentu kontenerowego
-├── docker-compose.yml # Lokalne testowanie
-└── aws/
-    ├── template.yaml      # SAM template (zalecane)
-    └── cloudformation.yml # CloudFormation template
+├── config.py          # Configuration (opera houses, email, intervals)
+├── models.py          # Data models
+├── scrapers.py        # Web scrapers for each opera house
+├── notifier.py        # Email notification system
+├── monitor.py         # Main monitor loop
+├── lambda_handler.py  # AWS Lambda handler
+├── requirements.txt   # Python dependencies
+├── Dockerfile         # For container deployment
+└── infrastructure/
+    ├── main.tf            # Terraform main config
+    ├── lambda.tf          # Lambda resources
+    ├── variables.tf       # Input variables
+    └── terraform.tfvars   # Variable values
 ```
 
-## Jak to działa?
+## How It Works
 
-1. **Scraping** - co 15 minut program pobiera strony repertuarowe wszystkich oper
-2. **Parsowanie** - szuka w HTML wzmianek o "Halka" lub "Straszny Dwór"
-3. **Wykrywanie** - sprawdza czy bilety są dostępne
-4. **Powiadomienie** - jeśli znajdzie nowe bilety, wysyła email
-5. **Pamięć** - zapisuje o czym już powiadomił (plik `monitor_state.json`)
+1. **Scraping** - Every hour, the program fetches repertoire pages from all opera houses
+2. **Parsing** - Searches HTML for mentions of "Halka" or "Straszny Dwór"
+3. **Date Filtering** - Only includes performances happening today or in the future
+4. **Detection** - Checks if tickets are available or sold out
+5. **Notification** - Sends email if new tickets are found
+6. **Memory** - Saves what it already notified about (`monitor_state.json`)
 
 ## Troubleshooting
 
-### Email nie dochodzi
+### Email not arriving
 
-1. Sprawdź czy używasz **App Password**, nie zwykłego hasła
-2. Sprawdź folder spam
-3. Upewnij się że 2FA jest włączone na koncie Gmail
+1. Make sure you're using **App Password**, not regular password
+2. Check spam folder
+3. Ensure 2FA is enabled on Gmail account
 
-### Scraper nie znajduje spektakli
+### Scraper not finding performances
 
-Strony oper się zmieniają. Jeśli scraper przestał działać dla konkretnej opery:
+Opera websites change frequently. If a scraper stops working:
 
-1. Sprawdź logi (`opera_monitor.log`)
-2. Otwórz stronę repertuaru opery w przeglądarce
-3. Zaktualizuj selektory w `scrapers.py`
+1. Check logs (CloudWatch for Lambda, or `opera_monitor.log` locally)
+2. Open the opera's repertoire page in browser
+3. Update selectors in `scrapers.py`
 
 ### Lambda timeout
 
-Zwiększ timeout w `template.yaml` (max 15 minut dla Lambda).
+Increase timeout in `infrastructure/lambda.tf` (max 15 minutes for Lambda).
 
-## Licencja
+## License
 
-MIT - używaj jak chcesz! 🎵
+MIT

@@ -1,7 +1,14 @@
-# Copy this to terraform.tfvars and fill in your values
-aws_region      = "eu-central-1"
-environment     = "prod"
-sender_email    = "your-email@gmail.com"
-sender_password = "your-gmail-app-password"
-recipient_email = "recipient@gmail.com"
-min_adjacent_seats = 2
+# Copy this file to terraform.tfvars and fill in your values
+# terraform.tfvars is gitignored and will not be committed
+
+aws_region         = "eu-central-1"
+environment        = "prod"
+
+# Email configuration (required)
+sender_email       = "your-gmail@gmail.com"
+sender_password    = "xxxx-xxxx-xxxx-xxxx"  # Gmail App Password
+recipient_emails   = "recipient@gmail.com"
+
+# Optional settings
+min_adjacent_seats  = 2
+schedule_expression = "rate(1 hour)"

@@ -144,7 +144,7 @@ resource "aws_lambda_function" "opera_monitor" {
     variables = {
       SENDER_EMAIL    = var.sender_email
       SENDER_PASSWORD = var.sender_password
-      RECIPIENT_EMAIL = var.recipient_email
+      RECIPIENT_EMAILS = var.recipient_emails
       MIN_ADJACENT    = var.min_adjacent_seats
       CHECK_SEATS     = "false"  # Disable Playwright seat checking in Lambda
     }
@@ -159,7 +159,7 @@ resource "aws_lambda_function" "opera_monitor" {
 # CloudWatch Event Rule (scheduler)
 resource "aws_cloudwatch_event_rule" "schedule" {
   name                = "opera-ticket-monitor-schedule"
-  description         = "Trigger Opera Ticket Monitor every 15 minutes"
+  description         = "Trigger Opera Ticket Monitor every hour"
   schedule_expression = var.schedule_expression
 }
 
