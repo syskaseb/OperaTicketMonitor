@@ -209,6 +209,6 @@ resource "null_resource" "invoke_lambda" {
 
   depends_on = [
     aws_lambda_function.opera_monitor,
-    aws_lambda_permission.allow_cloudwatch,
+    aws_scheduler_schedule.daily,
   ]
 }
