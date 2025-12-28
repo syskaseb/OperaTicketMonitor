@@ -4,7 +4,7 @@ Monitors Polish opera houses for ticket availability for **Halka** and **Straszn
 
 ## Features
 
-- Automatic scraping of 9 Polish opera houses every hour
+- Automatic scraping of 9 Polish opera houses every day
 - Email notifications when tickets become available
 - Filters to show only future performances (next 6 months)
 - Polish date formatting (e.g., "Piątek 7 maja 2026")
