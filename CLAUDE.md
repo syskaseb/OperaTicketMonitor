@@ -13,16 +13,19 @@ Opera Ticket Monitor - monitors Polish opera houses for availability of tickets 
 pip install -r requirements.txt
 playwright install chromium
 
-# Run monitor continuously
+# Run monitor continuously (local)
 python monitor.py
 
-# Run single check (for testing)
+# Run single check (for testing locally)
 python -c "from monitor import OperaTicketMonitor; import asyncio; m = OperaTicketMonitor(); asyncio.run(m.run_once())"
 
-# AWS Lambda deploy
-cd aws && sam build && sam deploy --guided
+# AWS Lambda deploy with Terraform
+cd infrastructure
+terraform init
+terraform plan
+terraform apply
 
-# Docker build
+# Docker build (optional, for manual container deployment)
 docker build -t opera-monitor .
 ```
 
