@@ -214,6 +214,16 @@ resource "aws_iam_role_policy" "scheduler_policy" {
   })
 }
 
+# Allow EventBridge Scheduler to invoke Lambda (resource-based policy)
+# This makes the trigger visible in Lambda UI
+resource "aws_lambda_permission" "allow_scheduler" {
+  statement_id  = "AllowExecutionFromScheduler"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.opera_monitor.function_name
+  principal     = "scheduler.amazonaws.com"
+  source_arn    = aws_scheduler_schedule.daily.arn
+}
+
 # Invoke Lambda immediately after deployment
 resource "null_resource" "invoke_lambda" {
   triggers = {
