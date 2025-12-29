@@ -16,6 +16,22 @@ resource "aws_iam_role" "lambda_role" {
   })
 }
 
+# S3 Bucket for persisting monitor state
+resource "aws_s3_bucket" "monitor_state" {
+  bucket        = "opera-ticket-monitor-state-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+}
+
+# Block public access to state bucket
+resource "aws_s3_bucket_public_access_block" "monitor_state" {
+  bucket = aws_s3_bucket.monitor_state.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
 # IAM Policy for Lambda
 resource "aws_iam_role_policy" "lambda_policy" {
   name = "opera-ticket-monitor-lambda-policy"
@@ -42,6 +58,14 @@ resource "aws_iam_role_policy" "lambda_policy" {
         Resource = [
           "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/opera-ticket-monitor/*"
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject"
+        ]
+        Resource = "${aws_s3_bucket.monitor_state.arn}/monitor_state.json"
       }
     ]
   })
@@ -126,12 +150,14 @@ resource "aws_lambda_function" "opera_monitor" {
       SENDER_PASSWORD  = var.sender_password
       RECIPIENT_EMAILS = var.recipient_emails
       MIN_ADJACENT     = var.min_adjacent_seats
+      STATE_BUCKET     = aws_s3_bucket.monitor_state.id
     }
   }
 
   depends_on = [
     aws_cloudwatch_log_group.lambda_logs,
     aws_iam_role_policy.lambda_policy,
+    aws_s3_bucket.monitor_state,
     null_resource.docker_build,
   ]
 }

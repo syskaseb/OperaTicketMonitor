@@ -17,3 +17,8 @@ output "schedule_arn" {
   description = "ARN of the EventBridge Scheduler"
   value       = aws_scheduler_schedule.daily.arn
 }
+
+output "state_bucket" {
+  description = "S3 bucket for persisting monitor state"
+  value       = aws_s3_bucket.monitor_state.id
+}
