@@ -183,7 +183,7 @@ class OperaTicketMonitor:
         logger.info(f"Szukam: Halka, Straszny Dwór")
         logger.info(f"Wymagane: {self.min_adjacent_seats} miejsca obok siebie")
         logger.info(f"Sprawdzanie co: {self.config.monitor.check_interval_minutes} minut")
-        logger.info(f"Powiadomienia na: {self.config.email.recipient_email}")
+        logger.info(f"Powiadomienia na: {', '.join(self.config.email.recipient_emails)}")
         logger.info(f"Monitorowane opery: {len([h for h in self.config.opera_houses if h.enabled])}")
         logger.info("=" * 60)
 

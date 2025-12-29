@@ -92,7 +92,8 @@ class SeatChecker:
                     await opera_links[0].click()
                     await page.wait_for_load_state('networkidle', timeout=10000)
                     await asyncio.sleep(2)
-                except:
+                except Exception as e:
+                    logger.debug(f"Failed to click opera link: {e}")
                     pass
 
             # Now look for "Kup bilet" or ticket buttons
@@ -107,7 +108,8 @@ class SeatChecker:
                     await ticket_buttons[0].click()
                     await page.wait_for_load_state('networkidle', timeout=10000)
                     await asyncio.sleep(3)
-                except:
+                except Exception as e:
+                    logger.debug(f"Failed to click ticket button: {e}")
                     pass
 
             # Look for available seats

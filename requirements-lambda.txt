@@ -1,4 +1,0 @@
-# Lambda-specific dependencies (no Playwright - too big)
-aiohttp>=3.9.0
-Brotli>=1.1.0
-beautifulsoup4>=4.12.0

@@ -155,8 +155,32 @@ Requires secrets: `SENDER_EMAIL`, `SENDER_PASSWORD`, `RECIPIENT_EMAILS`, `AWS_AC
 Created by Terraform:
 - **ECR Repository**: `opera-ticket-monitor` (stores Lambda container image)
 - **Lambda Function**: `opera-ticket-monitor` with Playwright support
-- **EventBridge Scheduler**: Triggers Lambda on configured schedule
-- **S3 Bucket**: Stores monitor state (`monitor_state.json`)
+- **EventBridge Scheduler**: Triggers Lambda on configured schedule (Europe/Warsaw timezone)
+- **S3 Bucket**: Stores monitor state (`monitor_state.json`) for persistence between Lambda invocations
 - **CloudWatch Logs**: 14-day retention for debugging
-- **IAM Roles**: Minimal permissions for Lambda execution
+- **IAM Roles**: Minimal permissions for Lambda execution (logs, SSM, S3)
 - **SSM Parameters**: Secure credential storage
+- **Lambda Permission**: Resource-based policy for Scheduler invocation visibility
+
+## Code Quality & Technical Debt
+
+Recent improvements (December 2025):
+- ✅ Fixed bare exception handlers in `seat_checker.py` - now logs specific errors
+- ✅ Removed hardcoded email addresses from `config.py` - security improvement
+- ✅ Fixed `recipient_email` attribute mismatch in `monitor.py`
+- ✅ Refactored SMTP code - extracted `_send_email()` helper method to eliminate duplication
+- ✅ Removed obsolete `requirements-lambda.txt` - consolidated to single `requirements.txt`
+- ✅ Fixed Playwright browser path for Lambda - set `PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers`
+- ✅ Added S3 ListBucket permission for proper state file checking
+
+### Remaining Technical Debt
+
+**Medium Priority:**
+- Large `notifier.py` file (500+ lines) - could be split into formatter/sender classes
+- Missing tests for `seat_checker.py` Playwright logic
+- Broad exception handling in `lambda_handler.py` S3 operations
+
+**Low Priority:**
+- Missing docstrings on some complex functions
+- Magic numbers/hardcoded colors in notifier HTML
+- SSL verification disabled for some scrapers (documented workaround for cert issues)
