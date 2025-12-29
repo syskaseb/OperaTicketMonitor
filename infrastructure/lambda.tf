@@ -66,6 +66,11 @@ resource "aws_iam_role_policy" "lambda_policy" {
           "s3:PutObject"
         ]
         Resource = "${aws_s3_bucket.monitor_state.arn}/monitor_state.json"
+      },
+      {
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = aws_s3_bucket.monitor_state.arn
       }
     ]
   })

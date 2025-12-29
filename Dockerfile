@@ -27,8 +27,12 @@ RUN dnf install -y \
 COPY requirements.txt ${LAMBDA_TASK_ROOT}/
 RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
 
-# Install Playwright and Chromium
-RUN playwright install chromium && \
+# Set Playwright browsers path to a fixed location that persists in Lambda
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
+
+# Install Playwright Chromium to the fixed path
+RUN mkdir -p ${PLAYWRIGHT_BROWSERS_PATH} && \
+    playwright install chromium && \
     playwright install-deps chromium 2>/dev/null || true
 
 # Copy application code
@@ -38,6 +42,7 @@ COPY scrapers.py ${LAMBDA_TASK_ROOT}/
 COPY notifier.py ${LAMBDA_TASK_ROOT}/
 COPY monitor.py ${LAMBDA_TASK_ROOT}/
 COPY lambda_handler.py ${LAMBDA_TASK_ROOT}/
+COPY seat_checker.py ${LAMBDA_TASK_ROOT}/
 
 # Set the handler
 CMD ["lambda_handler.lambda_handler"]
