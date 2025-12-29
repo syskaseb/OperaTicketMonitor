@@ -1,39 +1,43 @@
-# Dockerfile for running Opera Ticket Monitor on AWS ECS/Fargate
-# or any container platform
+# Dockerfile for AWS Lambda deployment with Playwright support
+FROM public.ecr.aws/lambda/python:3.12
 
-FROM python:3.12-slim
+# Install system dependencies for Playwright/Chromium
+RUN dnf install -y \
+    alsa-lib \
+    at-spi2-atk \
+    atk \
+    cups-libs \
+    gtk3 \
+    libXcomposite \
+    libXdamage \
+    libXrandr \
+    libXScrnSaver \
+    libdrm \
+    mesa-libgbm \
+    libxkbcommon \
+    nss \
+    pango \
+    xorg-x11-fonts-100dpi \
+    xorg-x11-fonts-75dpi \
+    xorg-x11-fonts-Type1 \
+    xorg-x11-fonts-misc \
+    && dnf clean all
 
-# Set working directory
-WORKDIR /app
+# Copy requirements and install Python dependencies
+COPY requirements.txt ${LAMBDA_TASK_ROOT}/
+RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements first for better caching
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Playwright and Chromium
+RUN playwright install chromium && \
+    playwright install-deps chromium 2>/dev/null || true
 
 # Copy application code
-COPY config.py .
-COPY models.py .
-COPY scrapers.py .
-COPY notifier.py .
-COPY monitor.py .
+COPY config.py ${LAMBDA_TASK_ROOT}/
+COPY models.py ${LAMBDA_TASK_ROOT}/
+COPY scrapers.py ${LAMBDA_TASK_ROOT}/
+COPY notifier.py ${LAMBDA_TASK_ROOT}/
+COPY monitor.py ${LAMBDA_TASK_ROOT}/
+COPY lambda_handler.py ${LAMBDA_TASK_ROOT}/
 
-# Create non-root user for security
-RUN useradd -m -u 1000 appuser
-USER appuser
-
-# Environment variables (override in deployment)
-ENV SENDER_EMAIL=""
-ENV SENDER_PASSWORD=""
-ENV PYTHONUNBUFFERED=1
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "print('healthy')" || exit 1
-
-# Run the monitor
-CMD ["python", "monitor.py"]
+# Set the handler
+CMD ["lambda_handler.lambda_handler"]

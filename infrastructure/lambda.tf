@@ -106,7 +106,7 @@ resource "aws_ecr_repository" "opera_monitor" {
 # Build and push container image
 resource "null_resource" "docker_build" {
   triggers = {
-    dockerfile_hash = filemd5("${path.module}/../Dockerfile.lambda")
+    dockerfile_hash = filemd5("${path.module}/../Dockerfile")
     config_hash     = filemd5("${path.module}/../config.py")
     scrapers_hash   = filemd5("${path.module}/../scrapers.py")
     monitor_hash    = filemd5("${path.module}/../monitor.py")
@@ -122,7 +122,7 @@ resource "null_resource" "docker_build" {
       aws ecr get-login-password --region ${var.aws_region} | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com
 
       # Build the image
-      docker build -f Dockerfile.lambda -t opera-ticket-monitor:latest .
+      docker build -t opera-ticket-monitor:latest .
 
       # Tag for ECR
       docker tag opera-ticket-monitor:latest ${aws_ecr_repository.opera_monitor.repository_url}:latest
