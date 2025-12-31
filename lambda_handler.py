@@ -4,10 +4,15 @@ AWS Lambda handler for Opera Ticket Monitor
 This allows running the monitor as a serverless function triggered by CloudWatch Events.
 Much cheaper than running an EC2 instance 24/7.
 """
+import os
+
+# Set Playwright browsers path BEFORE importing playwright
+# This must be done early, before any playwright imports
+os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "/opt/playwright-browsers")
+
 import asyncio
 import json
 import logging
-import os
 from datetime import datetime
 
 # Set up logging for Lambda
