@@ -37,12 +37,21 @@ def format_polish_date(dt: datetime) -> str:
     return f"{weekday} {dt.day} {month} {dt.year}"
 
 
-def is_future_date(dt: Optional[datetime]) -> bool:
-    """Check if date is today or in the future"""
+def is_future_date(dt: Optional[datetime], max_months_ahead: int = 8) -> bool:
+    """Check if date is today or in the future, but within the lookahead window.
+
+    Args:
+        dt: The date to check
+        max_months_ahead: Maximum months in the future to consider (default 8)
+
+    Returns:
+        True if date is between today and today + max_months_ahead
+    """
     if dt is None:
         return False  # Exclude performances with unknown dates
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    return dt >= today
+    max_date = today + timedelta(days=max_months_ahead * 30)
+    return today <= dt <= max_date
 
 
 def is_available(status: TicketStatus) -> bool:

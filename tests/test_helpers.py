@@ -1,6 +1,6 @@
 """Unit tests for helper functions in scrapers.py"""
 import pytest
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from scrapers import (
     format_polish_date,
@@ -49,14 +49,20 @@ class TestFormatPolishDate:
 
 
 class TestIsFutureDate:
-    """Tests for is_future_date function"""
+    """Tests for is_future_date function with lookahead window"""
 
-    def test_future_date_returns_true(self):
-        future = datetime(2030, 6, 15)
+    def test_near_future_date_returns_true(self):
+        """Date 30 days ahead should be within default 8-month window"""
+        future = datetime.now() + timedelta(days=30)
         assert is_future_date(future) is True
 
+    def test_far_future_date_returns_false(self):
+        """Date 10 months ahead should be outside default 8-month window"""
+        far_future = datetime.now() + timedelta(days=300)
+        assert is_future_date(far_future) is False
+
     def test_past_date_returns_false(self):
-        past = datetime(2020, 1, 1)
+        past = datetime.now() - timedelta(days=30)
         assert is_future_date(past) is False
 
     def test_none_returns_false(self):
@@ -65,6 +71,25 @@ class TestIsFutureDate:
     def test_today_returns_true(self):
         today = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
         assert is_future_date(today) is True
+
+    def test_custom_max_months_ahead(self):
+        """Test custom lookahead window"""
+        # 100 days ahead with 2-month window should be false
+        future = datetime.now() + timedelta(days=100)
+        assert is_future_date(future, max_months_ahead=2) is False
+
+        # 100 days ahead with 6-month window should be true
+        assert is_future_date(future, max_months_ahead=6) is True
+
+    def test_boundary_of_lookahead_window(self):
+        """Test dates at the edge of the lookahead window"""
+        # Just inside 8-month window (roughly 240 days)
+        inside = datetime.now() + timedelta(days=235)
+        assert is_future_date(inside, max_months_ahead=8) is True
+
+        # Just outside 8-month window
+        outside = datetime.now() + timedelta(days=245)
+        assert is_future_date(outside, max_months_ahead=8) is False
 
 
 class TestIsAvailable:
