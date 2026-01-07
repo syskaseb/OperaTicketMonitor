@@ -111,12 +111,13 @@ resource "aws_ecr_repository" "opera_monitor" {
 # Build and push container image
 resource "null_resource" "docker_build" {
   triggers = {
-    dockerfile_hash = filemd5("${path.module}/../Dockerfile")
-    config_hash     = filemd5("${path.module}/../config.py")
-    scrapers_hash   = filemd5("${path.module}/../scrapers.py")
-    monitor_hash    = filemd5("${path.module}/../monitor.py")
-    notifier_hash   = filemd5("${path.module}/../notifier.py")
-    handler_hash    = filemd5("${path.module}/../lambda_handler.py")
+    dockerfile_hash   = filemd5("${path.module}/../Dockerfile")
+    config_hash       = filemd5("${path.module}/../config.py")
+    scrapers_hash     = filemd5("${path.module}/../scrapers.py")
+    monitor_hash      = filemd5("${path.module}/../monitor.py")
+    notifier_hash     = filemd5("${path.module}/../notifier.py")
+    seat_checker_hash = filemd5("${path.module}/../seat_checker.py")
+    handler_hash      = filemd5("${path.module}/../lambda_handler.py")
   }
 
   provisioner "local-exec" {
