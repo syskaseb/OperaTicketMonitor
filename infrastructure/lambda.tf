@@ -152,11 +152,12 @@ resource "aws_lambda_function" "opera_monitor" {
 
   environment {
     variables = {
-      SENDER_EMAIL     = var.sender_email
-      SENDER_PASSWORD  = var.sender_password
-      RECIPIENT_EMAILS = var.recipient_emails
-      MIN_ADJACENT     = var.min_adjacent_seats
-      STATE_BUCKET     = aws_s3_bucket.monitor_state.id
+      SENDER_EMAIL             = var.sender_email
+      SENDER_PASSWORD          = var.sender_password
+      RECIPIENT_EMAILS         = var.recipient_emails
+      MIN_ADJACENT             = var.min_adjacent_seats
+      STATE_BUCKET             = aws_s3_bucket.monitor_state.id
+      PLAYWRIGHT_BROWSERS_PATH = "/opt/playwright-browsers"
     }
   }
 
