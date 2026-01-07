@@ -201,12 +201,12 @@ class TestOperaBaltyckaGdanskScraper:
 
     @pytest.mark.asyncio
     async def test_parses_polish_date_format(self, opera_baltycka_house, config):
-        """Test parsing Polish date format like '31 grudnia 2025'"""
+        """Test parsing Polish date format like '31 stycznia 2026'"""
         html = """
         <html>
         <body>
             <div class="event">
-                <span>31 grudnia 2025 środa godz. 19:00</span>
+                <span>31 stycznia 2026 sobota godz. 19:00</span>
                 <h3>Straszny Dwór</h3>
                 <a href="/bilety">Kup bilet</a>
             </div>
@@ -224,8 +224,8 @@ class TestOperaBaltyckaGdanskScraper:
         assert len(result.performances) == 1
         perf = result.performances[0]
         assert perf.opera_name == "Straszny Dwór"
-        assert perf.date.year == 2025
-        assert perf.date.month == 12
+        assert perf.date.year == 2026
+        assert perf.date.month == 1
         assert perf.date.day == 31
         assert perf.time == "19:00"
 
