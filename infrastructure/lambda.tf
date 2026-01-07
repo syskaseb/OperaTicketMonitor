@@ -178,8 +178,8 @@ resource "aws_scheduler_schedule" "daily" {
     mode = "OFF"
   }
 
-  schedule_expression          = "cron(0 14 * * ? *)"
-  schedule_expression_timezone = "Europe/Warsaw"
+  schedule_expression          = "cron(0 13 * * ? *)"
+  schedule_expression_timezone = "UTC"
 
   target {
     arn      = aws_lambda_function.opera_monitor.arn
