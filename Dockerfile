@@ -31,9 +31,11 @@ RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
 
 # Install Playwright Chromium to the fixed path
-RUN mkdir -p ${PLAYWRIGHT_BROWSERS_PATH} && \
-    playwright install chromium && \
-    playwright install-deps chromium 2>/dev/null || true
+RUN mkdir -p /opt/playwright-browsers && \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers playwright install chromium && \
+    playwright install-deps chromium 2>/dev/null || true && \
+    ls -la /opt/playwright-browsers/ && \
+    find /opt/playwright-browsers -name "chrome*" -type f
 
 # Copy application code
 COPY config.py ${LAMBDA_TASK_ROOT}/
